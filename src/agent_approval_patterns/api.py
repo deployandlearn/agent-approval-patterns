@@ -1,4 +1,4 @@
-"""HTTP API: scan, list, approve (202 + poll), reject.
+"""HTTP API: scan, list, approve (202 + poll), reject, audit report.
 
 Run with:  uv run uvicorn agent_approval_patterns.api:default_app --factory --reload
 """
@@ -15,6 +15,7 @@ from pydantic import BaseModel
 from agent_approval_patterns import proposals, tasks
 from agent_approval_patterns.agent import run_agent
 from agent_approval_patterns.approval_graph import Deps
+from agent_approval_patterns.audit_report import build_report
 from agent_approval_patterns.config import Settings
 from agent_approval_patterns.db import connect, create_schema
 from agent_approval_patterns.release_service import ReleaseService
@@ -39,6 +40,11 @@ def create_app(deps: Deps, enqueue: Callable = tasks.enqueue) -> FastAPI:
         result = run_agent(deps)
         return {"run_id": result["run_id"], "acted": result["acted"],
                 "escalated": result["escalated"]}
+
+    @app.get("/audit-report")
+    def audit_report():
+        with connect(url) as conn:
+            return build_report(conn)
 
     @app.get("/proposals")
     def list_proposals(status: str = proposals.PENDING):

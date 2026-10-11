@@ -39,19 +39,24 @@ def run_action(
     order_id: str,
     agent: str,
     run_id: str,
-    dry_run: bool,
-    idempotency_key: str | None,
+    idempotency_key: str | None = None,
+    dry_run: bool = True,
 ) -> dict[str, Any]:
-    """Run (or, in audit mode, record) one action. Always writes an action_log row."""
+    """Run (or, in audit mode, record) one action. Always writes an action_log row.
+
+    dry_run defaults to True: a caller that forgets to decide records, it doesn't act.
+    """
     spec = ACTIONS.get(action)
     if spec is None:
         raise ValueError(f"unknown action {action!r}")
 
-    if dry_run:
-        result = {"mode": "dry_run", "executed": False,
-                  "would_call": action, "idempotency_key": idempotency_key}
-    elif spec.call is None:
-        result = {"mode": "not_implemented", "executed": False}
+    request = {"operation": action, "order_id": order_id, "idempotency_key": idempotency_key}
+    if spec.call is None:
+        # Reported in audit mode too: a blocked action is a finding before go-live.
+        result = {"mode": "not_implemented", "executed": False, "request": request}
+    elif dry_run:
+        # Record the exact request we would have sent, and send nothing.
+        result = {"mode": "dry_run", "executed": False, "would_call": action, "request": request}
     else:
         try:
             response = spec.call(service, order_id, idempotency_key)
@@ -60,9 +65,30 @@ def run_action(
             # The call was made; it failed. Still "executed" so we verify state.
             result = {"mode": "failed", "executed": True, "error": str(exc)}
 
-    conn.execute(
+    row = conn.execute(
         "INSERT INTO action_log (run_id, agent, order_id, action, mode, detail) "
-        "VALUES (%s, %s, %s, %s, %s, %s)",
+        "VALUES (%s, %s, %s, %s, %s, %s) RETURNING id",
         (run_id, agent, order_id, action, result["mode"], Jsonb(result)),
+    ).fetchone()
+    return {"action": action, "log_id": row["id"], **result}
+
+
+def record_outcome(conn: psycopg.Connection, log_id: int, outcome: str) -> None:
+    """Attach the verification outcome to a real call. Dry runs never get one."""
+    conn.execute(
+        "UPDATE action_log SET outcome = %s WHERE id = %s AND mode IN ('executed', 'failed')",
+        (outcome, log_id),
     )
-    return {"action": action, **result}
+
+
+def recently_dry_run(conn: psycopg.Connection, *, agent: str, order_id: str, action: str) -> bool:
+    """True if this agent already recorded this dry run for this order in the last 24 hours.
+
+    Scans repeat, and in audit mode nothing changes between them. Without this,
+    one stuck order would count as a new would-be action every few minutes.
+    """
+    return conn.execute(
+        "SELECT 1 FROM action_log WHERE agent = %s AND order_id = %s AND action = %s "
+        "AND mode = 'dry_run' AND created_at > now() - interval '24 hours'",
+        (agent, order_id, action),
+    ).fetchone() is not None

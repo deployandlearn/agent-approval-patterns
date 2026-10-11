@@ -15,7 +15,7 @@ from typing import Any, Callable, TypedDict
 from langgraph.graph import END, StateGraph
 
 from agent_approval_patterns import proposals
-from agent_approval_patterns.actions import ACTIONS, run_action
+from agent_approval_patterns.actions import ACTIONS, record_outcome, run_action
 from agent_approval_patterns.audit_mode import is_audit_mode
 from agent_approval_patterns.config import Settings
 from agent_approval_patterns.db import connect
@@ -83,6 +83,7 @@ def build_approval_graph(deps: Deps):
         with connect(url) as conn:
             result = verify(conn, order_id=state["order_id"], before=state["before"],
                             expected=ACTIONS[state["action"]].expected_status)
+            record_outcome(conn, state["execution"]["log_id"], result["outcome"])
         return {"verification": result}
 
     def close(state: ApprovalState) -> ApprovalState:

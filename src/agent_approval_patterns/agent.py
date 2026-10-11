@@ -15,7 +15,7 @@ from typing import Any, TypedDict
 from langgraph.graph import END, StateGraph
 
 from agent_approval_patterns import proposals
-from agent_approval_patterns.actions import ACTIONS, run_action
+from agent_approval_patterns.actions import ACTIONS, recently_dry_run, record_outcome, run_action
 from agent_approval_patterns.approval_graph import Deps
 from agent_approval_patterns.audit_mode import is_audit_mode
 from agent_approval_patterns.db import connect
@@ -64,6 +64,10 @@ def build_agent_graph(deps: Deps):
         acted = []
         with connect(url) as conn:
             for order_id in state["to_retry"]:
+                if dry_run and recently_dry_run(conn, agent=AGENT, order_id=order_id,
+                                                action="retry_release"):
+                    acted.append({"order_id": order_id, "mode": "dry_run_already_recorded"})
+                    continue
                 before = read_status(conn, order_id)
                 result = run_action(
                     conn, deps.service, action="retry_release", order_id=order_id,
@@ -75,6 +79,7 @@ def build_agent_graph(deps: Deps):
                         conn, order_id=order_id, before=before,
                         expected=ACTIONS["retry_release"].expected_status,
                     )
+                    record_outcome(conn, result["log_id"], result["verification"]["outcome"])
                 acted.append({"order_id": order_id, **result})
         return {"acted": acted}
 

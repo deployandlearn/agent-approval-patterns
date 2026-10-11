@@ -44,7 +44,8 @@ sequenceDiagram
 |---|---|---|
 | Proposal store | `proposals.py` | One atomic conditional `UPDATE` per transition. Exactly one claim wins. A stale claim (15 min) can be taken over. Only the claim holder can close. The reviewer's action must be one the proposal offered. |
 | Approval graph | `approval_graph.py` | `load → execute → verify → close`, seeded only from the row. It does nothing if the run doesn't hold the claim or the proposal is already closed. |
-| Audit mode | `audit_mode.py` | Per-agent override, then the global default, which is **on**. In audit mode, actions are logged as `dry_run` and nothing is called. |
+| Audit mode | `audit_mode.py`, `actions.py` | Per-agent override, then the global default, which is **on**. `run_action` defaults to `dry_run=True`, so a caller that forgets to decide records instead of acting. A dry run logs the exact request it would have sent. Repeat scans record one dry run per order per day. |
+| Audit report | `audit_report.py` | `GET /audit-report` keeps three kinds of evidence apart: what agents *would* have done, what real calls achieved (verified), and how often reviewers picked the agent's first-choice fix. Dry runs never count toward a success rate. |
 | Actions | `actions.py` | Each action declares the state it should produce. Unimplemented actions report `not_implemented`, never success. |
 | Verifier | `verifier.py` | Re-reads the order: `verified`, `failed`, `unconfirmed` (nothing changed) or `not_checkable`. |
 | Task queue | `tasks.py`, `worker.py` | Postgres `FOR UPDATE SKIP LOCKED`, with a lease (5 min) that is deliberately shorter than the claim timeout (15 min). |
@@ -97,7 +98,13 @@ curl -s localhost:8000/proposals/1   # COMPLETED, verification: verified
 curl -s localhost:8000/proposals/2   # FAILED: the release service rejected ORD-1003
 ```
 
-**4. Try audit mode.** Re-seed, restart the API without `AUDIT_MODE=false`, and repeat. The scan and the approvals record `dry_run`, proposals close as `AUDITED`, and `release_calls` stays empty.
+**4. Try audit mode.** Re-seed, restart the API without `AUDIT_MODE=false`, and repeat, scanning twice. The scan and the approvals record `dry_run`, proposals close as `AUDITED`, and `release_calls` stays empty. Then look at the evidence:
+
+```bash
+curl -s localhost:8000/audit-report
+```
+
+You'll see three would-be runs on three orders (the second scan didn't double-count ORD-1001), no real outcomes, and reviewer agreement of 2 out of 2.
 
 ## Tests
 
@@ -117,6 +124,10 @@ uv run pytest -v
 | `test_unimplemented_action_is_reported_not_faked` | `NOT_EXECUTED`, verification skipped |
 | `test_queue_failure_releases_the_claim` | If the task can't be queued, the proposal goes back to `PENDING` |
 | `test_agent_in_audit_mode_logs_but_calls_nothing` | `dry_run` in the action log, zero downstream calls |
+| `test_caller_that_does_not_decide_gets_a_dry_run` | Calling `run_action` without `dry_run` sends nothing |
+| `test_repeated_scans_record_one_dry_run_per_order_per_day` | Three scans, one would-be run |
+| `test_dry_runs_never_count_toward_success_rate` | Three "would succeed" dry runs and one real failure give a success rate of 0, not 0.75 |
+| `test_agreement_is_measurable_in_audit_mode` | Reviewer agreement with the agent's first choice, while nothing real has run |
 
 ## Deliberately out of scope
 
@@ -133,7 +144,7 @@ Each post links to a tag, so the code you read matches the post.
 | Post | Tag | Status |
 |---|---|---|
 | The pause nobody resumed: human-in-the-loop approvals people can rely on | `a1-approvals` | Draft |
-| Audit mode: shipping an agent that isn't allowed to act yet | `a4-audit-mode` | Planned (code is already here) |
+| Audit mode: shipping an agent that isn't allowed to act yet | `a4-audit-mode` | Draft |
 | A 200 OK is not a fix: verifying agent actions | `a5-verification` | Planned (code is already here) |
 | Why I replaced an agent with three function calls | `a6-no-llm-in-the-loop` | Planned |
 | Background tasks vs a real queue | `a3-queue-and-resume` | Planned (needs checkpoint resume) |

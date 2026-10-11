@@ -36,8 +36,11 @@ CREATE TABLE IF NOT EXISTS action_log (
     action     text NOT NULL,
     mode       text NOT NULL,                       -- executed | dry_run | not_implemented | failed
     detail     jsonb NOT NULL DEFAULT '{}',
+    outcome    text,                                -- verification outcome, for real calls only
     created_at timestamptz NOT NULL DEFAULT now()
 );
+
+ALTER TABLE action_log ADD COLUMN IF NOT EXISTS outcome text;
 
 -- A minimal Postgres-backed task queue (FOR UPDATE SKIP LOCKED).
 CREATE TABLE IF NOT EXISTS tasks (
