@@ -1,0 +1,34 @@
+[project]
+name = "agent-approval-patterns"
+version = "0.1.0"
+description = "Durable human approvals, audit mode and state-based verification for agent actions (reference implementation)"
+readme = "README.md"
+requires-python = ">=3.12"
+license = "MIT"
+authors = [{ name = "Pushkar Goyal" }]
+dependencies = [
+    "langgraph==1.2.14",
+    "fastapi==0.143.0",
+    "uvicorn==0.54.0",
+    "psycopg[binary]==3.3.6",
+]
+
+[dependency-groups]
+dev = [
+    "pytest==9.1.1",
+    "httpx==0.28.1",
+]
+
+[project.scripts]
+agent-approval-patterns-seed = "agent_approval_patterns.seed:main"
+agent-approval-patterns-worker = "agent_approval_patterns.worker:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/agent_approval_patterns"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
