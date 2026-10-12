@@ -42,7 +42,7 @@ sequenceDiagram
 
 | Piece | File | What it guarantees |
 |---|---|---|
-| Proposal store | `proposals.py` | One atomic conditional `UPDATE` per transition. Exactly one claim wins. A stale claim (15 min) can be taken over. Only the claim holder can close. The reviewer's action must be one the proposal offered. |
+| Proposal store | `proposals.py` | A proposal's options must be registered actions. One atomic conditional `UPDATE` per transition. Exactly one claim wins. A stale claim (15 min) can be taken over. Only the claim holder can close. The reviewer's action must be one the proposal offered. |
 | Approval graph | `approval_graph.py` | `load → execute → verify → close`, seeded only from the row. It does nothing if the run doesn't hold the claim or the proposal is already closed. |
 | Audit mode | `audit_mode.py`, `actions.py` | Per-agent override, then the global default, which is **on**. `run_action` defaults to `dry_run=True`, so a caller that forgets to decide records instead of acting. A dry run logs the exact request it would have sent. Repeat scans record one dry run per order per day. |
 | Audit report | `audit_report.py` | `GET /audit-report` keeps three kinds of evidence apart: what agents *would* have done, what real calls achieved (verified), and how often reviewers picked the agent's first-choice fix. Dry runs never count toward a success rate. |
@@ -128,6 +128,7 @@ uv run pytest -v
 | `test_repeated_scans_record_one_dry_run_per_order_per_day` | Three scans, one would-be run |
 | `test_dry_runs_never_count_toward_success_rate` | Three "would succeed" dry runs and one real failure give a success rate of 0, not 0.75 |
 | `test_agreement_is_measurable_in_audit_mode` | Reviewer agreement with the agent's first choice, while nothing real has run |
+| `test_no_llm_in_the_loop.py` | Text a model might write ("Please retry the release…") can't be an action, a proposal option or an approval |
 
 ## Deliberately out of scope
 
@@ -146,7 +147,7 @@ Each post links to a tag, so the code you read matches the post.
 | The pause nobody resumed: human-in-the-loop approvals people can rely on | `a1-approvals` | Draft |
 | Audit mode: shipping an agent that isn't allowed to act yet | `a4-audit-mode` | Draft |
 | A 200 OK is not a fix: verifying agent actions | `a5-verification` | Planned (code is already here) |
-| Why I replaced an agent with three function calls | `a6-no-llm-in-the-loop` | Planned |
+| Why I replaced an agent with three function calls | `a6-no-llm-in-the-loop` | Draft |
 | Background tasks vs a real queue | `a3-queue-and-resume` | Planned (needs checkpoint resume) |
 | The guardrails that never fired | `a2-guardrails` | Planned (needs rate limits and circuit breaker) |
 

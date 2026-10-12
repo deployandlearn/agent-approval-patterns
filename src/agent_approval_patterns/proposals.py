@@ -13,6 +13,8 @@ from typing import Any
 import psycopg
 from psycopg.types.json import Jsonb
 
+from agent_approval_patterns.actions import ACTIONS
+
 PENDING = "PENDING"
 APPROVED = "APPROVED"  # claimed; an approval run is (or was) working on it
 REJECTED = "REJECTED"
@@ -34,6 +36,10 @@ def create(
     source_run_id: str,
     context: dict[str, Any] | None = None,
 ) -> int:
+    # Options must be registered actions. Text a model wrote can't become one.
+    unknown = [a for a in proposed_actions if a not in ACTIONS]
+    if unknown:
+        raise ValueError(f"unknown action(s) in proposal: {unknown}")
     row = conn.execute(
         """
         INSERT INTO proposals (agent, order_id, reason, proposed_actions, context, source_run_id)
